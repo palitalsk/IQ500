@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__)
 
 # โหลดโมเดลตอน start server
-MODEL_PATH = 'AI-model/models/best_cnn_model.pth'
+MODEL_PATH = 'IQ500/models/best_cnn_model.pth'
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 cnn_model = load_cnn_model(MODEL_PATH, device=DEVICE)
 transform = get_inference_transform()

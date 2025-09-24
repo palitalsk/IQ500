@@ -17,10 +17,10 @@ from typing import Optional, Dict, Tuple
 
 # ====================== Bank Detection Configuration ======================
 BANK_TEMPLATES = {
-    'kbank': 'AI-model/template/kbank_template.csv',
-    'scb': 'AI-model/template/scb_template.csv',
-    'gsb': 'AI-model/template/gsb_template.csv',
-    'ktb': 'AI-model/template/ktb_template.csv'
+    'kbank': 'IQ500/template/kbank_template.csv',
+    'scb': 'IQ500/template/scb_template.csv',
+    'gsb': 'IQ500/template/gsb_template.csv',
+    'ktb': 'IQ500/template/ktb_template.csv'
 }
 
 BANK_KEYWORDS = {
