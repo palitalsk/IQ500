@@ -7,12 +7,21 @@ import requests
 import os
 import tempfile
 import logging
+
+# ตั้งค่า DYLD_LIBRARY_PATH สำหรับ zbar library (macOS)
+# ต้องตั้งค่าก่อน import model ที่ใช้ pyzbar
+zbar_lib_path = '/opt/homebrew/opt/zbar/lib'
+if os.path.exists(zbar_lib_path):
+    current_dyld = os.environ.get('DYLD_LIBRARY_PATH', '')
+    if zbar_lib_path not in current_dyld:
+        os.environ['DYLD_LIBRARY_PATH'] = f'{zbar_lib_path}:{current_dyld}'.rstrip(':')
+
 from model import (
     load_cnn_model, 
     get_inference_transform, 
     classify_image_with_cnn, 
     ocr_with_auto_template,
-    ocr_fallback_all_banks
+    process_ocr_to_ai_result
 )
 
 # Setup logging
@@ -22,7 +31,9 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__)
 
 # โหลดโมเดลตอน start server
-MODEL_PATH = 'IQ500/models/best_cnn_model.pth'
+# ใช้ path ที่ relative กับไฟล์ api.py
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+MODEL_PATH = os.path.join(BASE_DIR, 'models', 'best_cnn_model.pth')
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 cnn_model = load_cnn_model(MODEL_PATH, device=DEVICE)
 transform = get_inference_transform()
@@ -43,7 +54,7 @@ def decode_base64_image(img_input):
     except Exception as e:
         raise ValueError(f"Invalid base64 image: {str(e)}")
 
-@app.route('/predict-slip', methods=['POST'])
+@app.route('/predict-slip', methods=['GET', 'POST'])
 def predict_slip():
     temp_file = None
     
@@ -87,6 +98,7 @@ def predict_slip():
             "confidence": confidence, 
             "bank_detected": None,
             "ocr_result": None,
+            "ai_result": None,
             "detection_method": None
         }
 
@@ -94,40 +106,43 @@ def predict_slip():
         if pred_class == 1 and confidence >= CONFIDENCE_THRESHOLD:
             logger.info("Image classified as slip, starting OCR...")
             
-            # Step 3: ตรวจหาธนาคารและทำ OCR โดยใช้ sender_bank field
-            ocr_result, detected_bank = ocr_with_auto_template(temp_file)
+            # Step 3: ตรวจหาธนาคารจาก QR Code และทำ OCR (ตาม requirement)
+            ocr_result, detected_bank, error_message = ocr_with_auto_template(temp_file)
             
-            if detected_bank and ocr_result:
-                # พบธนาคารและได้ข้อมูล OCR
-                logger.info(f"Bank detected from sender_bank field: {detected_bank}")
+            if error_message:
+                # มี error (ไม่รู้จักธนาคารหรือไม่มี template)
+                logger.warning(f"OCR failed: {error_message}")
+                response.update({
+                    "is_slip": True,
+                    "bank_detected": detected_bank,
+                    "ocr_result": None,
+                    "ai_result": None,
+                    "error": error_message,
+                    "detection_method": "qr_code"
+                })
+            elif detected_bank and ocr_result:
+                # สำเร็จ: พบธนาคารและได้ข้อมูล OCR
+                logger.info(f"OCR successful for bank: {detected_bank}")
+                # ประมวลผล OCR result เป็น ai_result
+                ai_result = process_ocr_to_ai_result(ocr_result, detected_bank)
                 response.update({
                     "is_slip": True,
                     "bank_detected": detected_bank,
                     "ocr_result": ocr_result,
-                    "detection_method": "sender_bank_field"
+                    "ai_result": ai_result,
+                    "detection_method": "qr_code"
                 })
-                
             else:
-                # ไม่พบธนาคารจาก sender_bank ลอง fallback
-                logger.info("Sender bank detection failed, trying fallback method...")
-                fallback_result, fallback_bank = ocr_fallback_all_banks(temp_file)
-                
-                if fallback_result:
-                    logger.info(f"Fallback successful with bank: {fallback_bank}")
-                    response.update({
-                        "is_slip": True,
-                        "bank_detected": fallback_bank,
-                        "ocr_result": fallback_result,
-                        "detection_method": "fallback_best_match"
-                    })
-                else:
-                    logger.warning("All OCR methods failed")
-                    response.update({
-                        "is_slip": True,
-                        "bank_detected": None,
-                        "ocr_result": {},
-                        "detection_method": "failed"
-                    })
+                # กรณีที่ไม่คาดคิด
+                logger.warning("OCR returned unexpected result")
+                response.update({
+                    "is_slip": True,
+                    "bank_detected": None,
+                    "ocr_result": None,
+                    "ai_result": None,
+                    "error": "เกิดข้อผิดพลาดในการประมวลผล OCR",
+                    "detection_method": "qr_code"
+                })
         else:
             logger.info("Image is not a slip or confidence too low")
 

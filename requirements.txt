@@ -4,3 +4,12 @@ scikit-learn
 matplotlib
 seaborn
 jupyter
+flask
+pillow
+torch
+torchvision
+albumentations
+opencv-python
+easyocr
+pyzbar
+requests

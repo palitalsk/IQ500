@@ -16,11 +16,13 @@ from pyzbar.pyzbar import decode
 from typing import Optional, Dict, Tuple
 
 # ====================== Bank Detection Configuration ======================
+# ใช้ absolute path หรือ relative path จากไฟล์ model.py
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 BANK_TEMPLATES = {
-    'kbank': 'IQ500/template/kbank_template.csv',
-    'scb': 'IQ500/template/scb_template.csv',
-    'gsb': 'IQ500/template/gsb_template.csv',
-    'ktb': 'IQ500/template/ktb_template.csv'
+    'kbank': os.path.join(BASE_DIR, 'template', 'kbank_template.csv'),
+    'scb': os.path.join(BASE_DIR, 'template', 'scb_template.csv'),
+    'gsb': os.path.join(BASE_DIR, 'template', 'gsb_template.csv'),
+    'ktb': os.path.join(BASE_DIR, 'template', 'ktb_template.csv')
 }
 
 BANK_KEYWORDS = {
@@ -41,6 +43,74 @@ BANK_KEYWORDS = {
         'krungthai', 'กรุงไทย จำกัด'
     ]
 }
+
+# ====================== QR-based Bank Detection ======================
+# แผนที่ bank code (ตัวเลขจาก QR) -> โค้ดธนาคารที่ใช้ในระบบนี้
+QR_BANK_CODE_MAP = {
+    "004": "kbank",  # ธนาคารกสิกรไทย
+    "014": "scb",    # ธนาคารไทยพาณิชย์
+    "006": "ktb",    # ธนาคารกรุงไทย
+    "030": "gsb",    # ธนาคารออมสิน
+    "002": "bbl",    # ธนาคารกรุงเทพ
+    "025": "bay",    # ธนาคารกรุงศรีอยูธยา
+}
+
+
+def extract_qr_from_image(image_path: str) -> Optional[str]:
+    """
+    ดึง raw QR data จากภาพทั้งใบ
+    """
+    try:
+        img = Image.open(image_path)
+        decoded_objects = decode(img)
+        if not decoded_objects:
+            print("No QR code found in image")
+            return None
+
+        # ใช้ QR ตัวแรกที่เจอ
+        raw_qr = decoded_objects[0].data.decode("utf-8")
+        print(f"QR code extracted successfully, length: {len(raw_qr)}")
+        return raw_qr
+    except NameError as e:
+        print(f"pyzbar decode not available: {str(e)}")
+        return None
+    except Exception as e:
+        print(f"Error extracting QR from image: {str(e)}")
+        return None
+
+
+def extract_bank_code_from_qr(qr_raw: str) -> Optional[str]:
+    """
+    ดึง bank code 3 หลักจาก raw QR (ตำแหน่ง index 18-20)
+    """
+    if not qr_raw:
+        return None
+
+    if len(qr_raw) < 21:
+        return None
+
+    bank_code = qr_raw[18:21]  # index 18–20
+    return bank_code
+
+
+def detect_bank_from_qr(image_path: str) -> Tuple[Optional[str], Optional[str]]:
+    """
+    ตรวจหาธนาคารจาก QR Code ในภาพ
+
+    Returns:
+        detected_bank (str | None): โค้ดธนาคารภายในระบบ เช่น 'kbank', 'scb', 'gsb', 'ktb'
+        numeric_bank_code (str | None): bank code ตัวเลขจาก QR เช่น '004', '014'
+    """
+    qr_raw = extract_qr_from_image(image_path)
+    if not qr_raw:
+        return None, None
+
+    numeric_bank_code = extract_bank_code_from_qr(qr_raw)
+    if not numeric_bank_code:
+        return None, None
+
+    detected_bank = QR_BANK_CODE_MAP.get(numeric_bank_code)
+    return detected_bank, numeric_bank_code
 
 # ====================== CNN Model ======================
 class EnhancedSlipCNN(nn.Module):
@@ -206,27 +276,46 @@ def get_bank_template_path(bank_code: str) -> Optional[str]:
         return template_path
     return None
 
-def ocr_with_auto_template(image_path: str) -> Tuple[Dict, Optional[str]]:
+def ocr_with_auto_template(image_path: str) -> Tuple[Dict, Optional[str], Optional[str]]:
     """
-    OCR โดยตรวจหาธนาคารอัตโนมัติจาก sender_bank field และใช้ template ที่เหมาะสม
+    OCR โดยตรวจหาธนาคารจาก QR Code เท่านั้น และใช้ template ที่เหมาะสม
+    
+    Returns:
+        (extracted_data, detected_bank, error_message)
+        - extracted_data: ข้อมูล OCR ที่ได้
+        - detected_bank: โค้ดธนาคารที่ตรวจพบ
+        - error_message: ข้อความ error ถ้ามี (None ถ้าสำเร็จ)
     """
-    # 1. ตรวจหาธนาคารจาก sender_bank fields
-    detected_bank, confidence = detect_bank_from_sender_field(image_path)
+    # 1. ตรวจหาธนาคารจาก QR Code เท่านั้น (ตาม requirement)
+    detected_bank, numeric_bank_code = detect_bank_from_qr(image_path)
     
-    print(f"Bank detection result: {detected_bank} (confidence: {confidence})")
+    print(f"Bank detection from QR: {detected_bank} (numeric code: {numeric_bank_code})")
     
+    # 2. ถ้าไม่เจอ QR Code หรืออ่าน QR Code ไม่ได้
     if not detected_bank:
-        return {}, None
+        if numeric_bank_code:
+            # มี QR code แต่ bank code ไม่รู้จัก
+            error_msg = f"ไม่รู้จักธนาคารนี้ (Bank Code: {numeric_bank_code})"
+            print(f"Error: {error_msg}")
+            return {}, None, error_msg
+        else:
+            # ไม่พบ QR Code ในภาพ
+            error_msg = "ไม่พบ QR Code ในภาพสลิป"
+            print(f"Error: {error_msg}")
+            return {}, None, error_msg
     
-    # 2. ใช้ template ของธนาคารที่ตรวจพบ
+    # 3. ตรวจสอบว่ามี template สำหรับธนาคารนี้หรือไม่
     template_path = get_bank_template_path(detected_bank)
     if not template_path:
-        return {}, detected_bank
+        error_msg = f"ไม่สามารถถอดข้อความได้เนื่องจากไม่สามารถระบุเทมเพลตธนาคารที่ใช้ได้ (ธนาคาร: {detected_bank})"
+        print(f"Error: {error_msg}")
+        return {}, detected_bank, error_msg
     
-    # 3. ทำ OCR ด้วย template ที่เหมาะสม
+    # 4. ทำ OCR ด้วย template ที่เหมาะสม
+    print(f"Using template: {template_path} for bank: {detected_bank}")
     extracted_data = ocr_with_template(image_path, template_path)
     
-    return extracted_data, detected_bank
+    return extracted_data, detected_bank, None
 
 def ocr_with_template(image_path, template_csv_path):
     """
@@ -268,32 +357,105 @@ def ocr_with_template(image_path, template_csv_path):
     
     return extracted_data
 
-# ====================== Fallback OCR ======================
-def ocr_fallback_all_banks(image_path: str) -> Dict:
+# ====================== AI Result Processing ======================
+def process_ocr_to_ai_result(ocr_result: Dict, bank_detected: Optional[str] = None) -> Dict:
     """
-    ถ้าตรวจหาธนาคารไม่ได้ ลองใช้ template ทุกธนาคารแล้วเลือกผลที่ดีที่สุด
-    """
-    best_result = {}
-    best_score = 0
-    best_bank = None
+    ประมวลผล OCR result ให้เป็น structured data สำหรับ ai_result
     
-    for bank_code, template_path in BANK_TEMPLATES.items():
-        if not os.path.exists(template_path):
-            continue
-            
+    Args:
+        ocr_result: ข้อมูล OCR ที่ได้จาก ocr_with_template
+        bank_detected: ธนาคารที่ตรวจพบ (optional)
+    
+    Returns:
+        Dict ที่มีโครงสร้างข้อมูลที่ประมวลผลแล้ว
+    """
+    def clean_text(text: str) -> str:
+        """ทำความสะอาดข้อความ"""
+        if not text or text.strip() == "":
+            return ""
+        # ลบ whitespace ที่ไม่จำเป็น
+        text = " ".join(text.split())
+        return text.strip()
+    
+    def clean_amount(amount_str: str) -> Optional[float]:
+        """แปลงจำนวนเงินเป็น float"""
+        if not amount_str or amount_str.strip() == "":
+            return None
         try:
-            result = ocr_with_template(image_path, template_path)
-            
-            # คำนวณคะแนนจากจำนวน field ที่มีข้อมูล
-            score = sum(1 for v in result.values() if v and str(v).strip())
-            
-            if score > best_score:
-                best_score = score
-                best_result = result
-                best_bank = bank_code
-                
-        except Exception as e:
-            print(f"Error with {bank_code} template: {str(e)}")
-            continue
+            # ลบ comma และ whitespace
+            cleaned = amount_str.replace(",", "").replace(" ", "").strip()
+            # ลบตัวอักษรที่ไม่ใช่ตัวเลขและจุดทศนิยม
+            cleaned = re.sub(r'[^\d.]', '', cleaned)
+            if cleaned:
+                return float(cleaned)
+        except (ValueError, AttributeError):
+            pass
+        return None
     
-    return best_result, best_bank
+    def clean_account(account_str: str) -> str:
+        """ทำความสะอาดเลขบัญชี"""
+        if not account_str or account_str.strip() == "":
+            return ""
+        # ลบ whitespace และตัวอักษรพิเศษที่ไม่ใช่ตัวเลขและ x
+        cleaned = re.sub(r'[^\dxX\-]', '', account_str)
+        return cleaned.strip()
+    
+    def clean_name(name_str: str) -> str:
+        """ทำความสะอาดชื่อ"""
+        if not name_str or name_str.strip() == "":
+            return ""
+        # ลบ whitespace ที่ไม่จำเป็น
+        cleaned = " ".join(name_str.split())
+        # ลบตัวอักษรพิเศษที่อาจเป็น noise
+        cleaned = re.sub(r'[^\w\sก-๙\.]', '', cleaned, flags=re.UNICODE)
+        return cleaned.strip()
+    
+    def clean_date(date_str: str) -> str:
+        """ทำความสะอาดวันที่"""
+        if not date_str or date_str.strip() == "":
+            return ""
+        return clean_text(date_str)
+    
+    def clean_time(time_str: str) -> str:
+        """ทำความสะอาดเวลา"""
+        if not time_str or time_str.strip() == "":
+            return ""
+        # ลบตัวอักษรที่ไม่ใช่ตัวเลขและ :
+        cleaned = re.sub(r'[^\d:]', '', time_str)
+        return cleaned.strip()
+    
+    def clean_reference(ref_str: str) -> str:
+        """ทำความสะอาด reference number"""
+        if not ref_str or ref_str.strip() == "":
+            return ""
+        # ลบ whitespace และตัวอักษรพิเศษที่ไม่จำเป็น
+        cleaned = re.sub(r'[^\w\|\-]', '', ref_str)
+        return cleaned.strip()
+    
+    # สร้าง structured data
+    ai_result = {
+        "amount": clean_amount(ocr_result.get("amount", "")),
+        "sender": {
+            "bank": clean_text(ocr_result.get("sender_bank", "")),
+            "account": clean_account(ocr_result.get("sender_account", "")),
+            "name": clean_name(ocr_result.get("sender_name", ""))
+        },
+        "receiver": {
+            "bank": clean_text(ocr_result.get("reciever_bank", "")),
+            "account": clean_account(ocr_result.get("reciever_account", "")),
+            "name": clean_name(ocr_result.get("reciever_name", ""))
+        },
+        "transfer_date": clean_date(ocr_result.get("transfer_date", "")),
+        "transfer_time": clean_time(ocr_result.get("transfer_time", "")),
+        "reference_number": clean_reference(ocr_result.get("reference_number", "")),
+        "fee": clean_amount(ocr_result.get("fee", "")) if ocr_result.get("fee") else None,
+        "qr_code": clean_text(ocr_result.get("qr_code", "")) if ocr_result.get("qr_code") else None
+    }
+    
+    # เพิ่ม bank_detected ถ้ามี
+    if bank_detected:
+        ai_result["detected_bank"] = bank_detected
+    
+    return ai_result
+
+
