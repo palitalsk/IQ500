@@ -1,4 +1,3 @@
-# AI-model/model.py 
 import io
 import json
 import os
@@ -16,7 +15,6 @@ from pyzbar.pyzbar import decode
 from typing import Optional, Dict, Tuple
 
 # ====================== Bank Detection Configuration ======================
-# ใช้ absolute path หรือ relative path จากไฟล์ model.py
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 BANK_TEMPLATES = {
     'kbank': os.path.join(BASE_DIR, 'template', 'kbank_template.csv'),
@@ -45,7 +43,7 @@ BANK_KEYWORDS = {
 }
 
 # ====================== QR-based Bank Detection ======================
-# แผนที่ bank code (ตัวเลขจาก QR) -> โค้ดธนาคารที่ใช้ในระบบนี้
+# bank code (ตัวเลขจาก QR)
 QR_BANK_CODE_MAP = {
     "004": "kbank",  # ธนาคารกสิกรไทย
     "014": "scb",    # ธนาคารไทยพาณิชย์
@@ -286,7 +284,7 @@ def ocr_with_auto_template(image_path: str) -> Tuple[Dict, Optional[str], Option
         - detected_bank: โค้ดธนาคารที่ตรวจพบ
         - error_message: ข้อความ error ถ้ามี (None ถ้าสำเร็จ)
     """
-    # 1. ตรวจหาธนาคารจาก QR Code เท่านั้น (ตาม requirement)
+    # 1. ตรวจหาธนาคารจาก QR Code เท่านั้น
     detected_bank, numeric_bank_code = detect_bank_from_qr(image_path)
     
     print(f"Bank detection from QR: {detected_bank} (numeric code: {numeric_bank_code})")
@@ -319,7 +317,7 @@ def ocr_with_auto_template(image_path: str) -> Tuple[Dict, Optional[str], Option
 
 def ocr_with_template(image_path, template_csv_path):
     """
-    OCR ด้วย template ที่กำหนด (ฟังก์ชันเดิม)
+    OCR ด้วย template ที่กำหนด
     """
     reader = easyocr.Reader(['th', 'en'])
     img = Image.open(image_path)

@@ -8,8 +8,6 @@ import os
 import tempfile
 import logging
 
-# ตั้งค่า DYLD_LIBRARY_PATH สำหรับ zbar library (macOS)
-# ต้องตั้งค่าก่อน import model ที่ใช้ pyzbar
 zbar_lib_path = '/opt/homebrew/opt/zbar/lib'
 if os.path.exists(zbar_lib_path):
     current_dyld = os.environ.get('DYLD_LIBRARY_PATH', '')
@@ -30,8 +28,6 @@ logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 
-# โหลดโมเดลตอน start server
-# ใช้ path ที่ relative กับไฟล์ api.py
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 MODEL_PATH = os.path.join(BASE_DIR, 'models', 'best_cnn_model.pth')
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
