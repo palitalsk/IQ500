@@ -34,7 +34,11 @@ DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 cnn_model = load_cnn_model(MODEL_PATH, device=DEVICE)
 transform = get_inference_transform()
 
-CONFIDENCE_THRESHOLD = 0.85
+# NOTE: ค่า threshold สำหรับตัดสินว่าเป็นสลิปหรือไม่
+# ถ้า confidence >= threshold จะถือว่าเป็นสลิปและทำ OCR
+# ถ้า confidence < threshold จะถือว่าไม่ใช่สลิป
+# TODO: ถ้าต้องการเปลี่ยนค่า threshold ให้แก้ที่บรรทัดนี้
+CONFIDENCE_THRESHOLD = 0.5
 
 def decode_base64_image(img_input):
     """แปลง base64 เป็น PIL Image"""
