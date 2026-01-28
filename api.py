@@ -38,7 +38,7 @@ transform = get_inference_transform()
 # ถ้า confidence >= threshold จะถือว่าเป็นสลิปและทำ OCR
 # ถ้า confidence < threshold จะถือว่าไม่ใช่สลิป
 # TODO: ถ้าต้องการเปลี่ยนค่า threshold ให้แก้ที่บรรทัดนี้
-CONFIDENCE_THRESHOLD = 0.5
+CONFIDENCE_THRESHOLD = 0.80
 
 def decode_base64_image(img_input):
     """แปลง base64 เป็น PIL Image"""

@@ -178,23 +178,8 @@ QR_BANK_CODE_MAP = {
 
 **หมายเหตุ:**
 - QR Bank Code คือตัวเลข 3 หลักที่อยู่ใน QR Code ของสลิป (ตำแหน่ง index 18-20)
-- **อ้างอิง:** รายการ Bank Code ทั้งหมดสามารถดูได้ที่ [Bank of Thailand - QR Code Standard](https://www.bot.or.th/Thai/FinancialInstitutions/Standard/Pages/QRCode.aspx)
+- **อ้างอิง:** รายการ Bank Code ทั้งหมดสามารถดูได้ที่ [Bank of Thailand - QR Code Standard](https://www.bot.or.th/en/fi-list.html?listingType=InvolvePartyOpenListingResultsBank)
 - **NOTE:** ถ้าเพิ่มธนาคารใหม่ ต้องเพิ่ม mapping ตรงนี้ด้วย
-
-#### 4. **ตั้งค่า Bank Keywords** (ไฟล์: `model.py`)
-
-```python
-BANK_KEYWORDS = {
-    'kbank': [
-        'กสิกรไทย', 'กสิกร', 'kbank', 'kasikorn', ...
-    ],
-    # ... เพิ่ม keywords สำหรับธนาคารใหม่
-}
-```
-
-**หมายเหตุ:**
-- Keywords ใช้สำหรับการตรวจสอบธนาคารจากข้อความในสลิป (fallback method)
-- แต่ตอนนี้ระบบใช้ QR Code เป็นหลัก
 
 ## ➕ การเพิ่มธนาคารใหม่
 
@@ -202,7 +187,7 @@ BANK_KEYWORDS = {
 
 1. **หา QR Bank Code ของธนาคาร**
    - ดูจาก QR Code ในสลิป (ตัวเลขตำแหน่งที่ 18-20)
-   - หรือดูจาก [Bank of Thailand - QR Code Standard](https://www.bot.or.th/Thai/FinancialInstitutions/Standard/Pages/QRCode.aspx)
+   - หรือดูจาก [Bank of Thailand - QR Code Standard](https://www.bot.or.th/en/fi-list.html?listingType=InvolvePartyOpenListingResultsBank)
 
 2. **สร้าง Template File**
    - ใช้ VIA (VGG Image Annotator) เพื่อสร้าง template
@@ -217,7 +202,7 @@ BANK_KEYWORDS = {
    }
    ```
 
-4. **เพิ่มใน `QR_BANK_CODE_MAP`** (ไฟล์: `model.py` บรรทัด ~58)
+4. **เพิ่มใน `QR_BANK_CODE_MAP`** (ไฟล์: `model.py`)
    ```python
    QR_BANK_CODE_MAP = {
        # ... mapping เดิม
@@ -225,17 +210,7 @@ BANK_KEYWORDS = {
    }
    ```
 
-5. **เพิ่มใน `BANK_KEYWORDS`** (ไฟล์: `model.py` บรรทัด ~28)
-   ```python
-   BANK_KEYWORDS = {
-       # ... keywords เดิม
-       'new_bank': [
-           'ชื่อธนาคารภาษาไทย', 'ชื่อย่อ', 'ชื่อภาษาอังกฤษ', ...
-       ],
-   }
-   ```
-
-6. **ทดสอบ**
+5. **ทดสอบ**
    - ส่งรูปสลิปของธนาคารใหม่มาทดสอบ
    - ตรวจสอบว่า OCR ทำงานถูกต้อง
 

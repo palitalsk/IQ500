@@ -17,7 +17,7 @@ from typing import Optional, Dict, Tuple, List
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 # NOTE: Template files ใช้สำหรับกำหนดตำแหน่งของข้อมูลในสลิปแต่ละธนาคาร
 # TODO: ถ้าต้องการเพิ่มธนาคารใหม่ ให้สร้าง template file แล้วเพิ่มที่นี่
-# Template file ต้องอยู่ในโฟลเดอร์ template/ และใช้รูปแบบ JSON (VIA annotation format)
+# Template file ต้องอยู่ในโฟลเดอร์ template/ และใช้รูปแบบ JSON (annotation format)
 BANK_TEMPLATES = {
     'kbank': os.path.join(BASE_DIR, 'template', 'kbank_template.json'),
     'scb': os.path.join(BASE_DIR, 'template', 'scb_template.json'),
@@ -28,41 +28,10 @@ BANK_TEMPLATES = {
     'bay': os.path.join(BASE_DIR, 'template', 'bay_template.json')
 }
 
-BANK_KEYWORDS = {
-    'kbank': [
-        'กสิกรไทย', 'กสิกร', 'kbank', 'kasikorn', 'ธ.กสิกรไทย',
-        'kasikornbank', 'กสิกรไทย จำกัด'
-    ],
-    'scb': [
-        'ไทยพาณิชย์', 'SCB','scb', 'siam commercial', 'ธนาคารไทยพาณิชย์',
-        'พาณิชย์', 'siamcommercial'
-    ],
-    'gsb': [
-        'ออมสิน', 'gsb', 'government savings', 'ธนาคารออมสิน',
-        'กอส', 'savings bank', 'mymemo'
-    ],
-    'ktb': [
-        'กรุงไทย', 'ktb', 'krung thai', 'ธนาคารกรุงไทย',
-        'krungthai', 'กรุงไทย จำกัด'
-    ],
-    'bbl': [
-        'กรุงเทพ', 'bbl', 'bangkok bank', 'ธนาคารกรุงเทพ',
-        'bangkokbank', 'กรุงเทพ จำกัด'
-    ],
-    'uob': [
-        'ยูโอบี', 'uob', 'united overseas bank', 'ธนาคารยูโอบี',
-        'uobthailand', 'ยูโอบี ไทย'
-    ],
-    'bay': [
-        'กรุงศรี', 'bay', 'krungsri', 'ธนาคารกรุงศรีอยุธยา',
-        'krungsri bank', 'กรุงศรีอยุธยา'
-    ]
-}
-
 # ====================== QR-based Bank Detection ======================
 # NOTE: QR Bank Code คือตัวเลข 3 หลักที่อยู่ใน QR Code ของสลิป (ตำแหน่ง index 18-20)
 # อ้างอิง: รายการ Bank Code ทั้งหมดสามารถดูได้ที่
-# https://www.bot.or.th/Thai/FinancialInstitutions/Standard/Pages/QRCode.aspx
+# https://www.bot.or.th/en/fi-list.html?listingType=InvolvePartyOpenListingResultsBank
 # TODO: ถ้าต้องการเพิ่มธนาคารใหม่ ให้ดู Bank Code จากลิงก์ด้านบนแล้วเพิ่ม mapping ตรงนี้
 QR_BANK_CODE_MAP = {
     "004": "kbank",  # ธนาคารกสิกรไทย
@@ -219,108 +188,6 @@ def load_template_from_json(template_json_path: str) -> List[Dict]:
     except Exception as e:
         print(f"Error loading template JSON: {str(e)}")
         return []
-
-
-def extract_sender_bank_field(image_path: str, template_json_path: str) -> Optional[str]:
-    """
-    แยกเฉพาะ field sender_bank จาก template ที่กำหนด
-    """
-    reader = easyocr.Reader(['th', 'en'])
-    img = Image.open(image_path)
-    
-    try:
-        regions = load_template_from_json(template_json_path)
-        
-        # หา sender_bank field
-        sender_bank_region = None
-        for region in regions:
-            if region['field_name'] == 'sender_bank':
-                sender_bank_region = region
-                break
-        
-        if not sender_bank_region:
-            return None
-        
-        # Crop และ OCR เฉพาะ sender_bank area
-        x = sender_bank_region['x']
-        y = sender_bank_region['y']
-        width = sender_bank_region['width']
-        height = sender_bank_region['height']
-        
-        cropped_img = img.crop((x, y, x+width, y+height))
-        img_bytes = io.BytesIO()
-        cropped_img.save(img_bytes, format='PNG')
-        img_bytes = img_bytes.getvalue()
-        result = reader.readtext(img_bytes, detail=0)
-        text = ' '.join(result).strip()
-        
-        return text
-        
-    except Exception as e:
-        print(f"Error extracting sender_bank: {str(e)}")
-        return None
-
-
-def detect_bank_from_sender_field(image_path: str) -> Tuple[Optional[str], float]:
-    """
-    ตรวจสอบธนาคารโดยการเช็ค sender_bank field จากทุก template
-    """
-    bank_scores = {}
-    
-    for bank_code, template_path in BANK_TEMPLATES.items():
-        if not os.path.exists(template_path):
-            continue
-            
-        try:
-            sender_text = extract_sender_bank_field(image_path, template_path)
-            
-            if not sender_text:
-                bank_scores[bank_code] = 0
-                continue
-                
-            score = calculate_bank_score(sender_text.lower(), bank_code)
-            bank_scores[bank_code] = score
-            
-            print(f"Bank: {bank_code}, Sender text: '{sender_text}', Score: {score}")
-            
-        except Exception as e:
-            print(f"Error processing {bank_code}: {str(e)}")
-            bank_scores[bank_code] = 0
-    
-    if not bank_scores:
-        return None, 0.0
-        
-    best_bank = max(bank_scores, key=bank_scores.get)
-    best_score = bank_scores[best_bank]
-    
-    if best_score >= 0.5:
-        return best_bank, best_score
-    
-    return None, best_score
-
-
-def calculate_bank_score(sender_text: str, bank_code: str) -> float:
-    """คำนวณคะแนนความตรงกับธนาคารจาก sender_bank text"""
-    if not sender_text:
-        return 0.0
-        
-    keywords = BANK_KEYWORDS.get(bank_code, [])
-    if not keywords:
-        return 0.0
-    
-    matches = 0
-    for keyword in keywords:
-        if keyword.lower() in sender_text:
-            matches += 1
-    
-    base_score = matches / len(keywords)
-    
-    # ให้ bonus กับ keyword หลัก
-    main_keyword = keywords[0].lower()
-    if main_keyword in sender_text:
-        base_score += 0.3
-    
-    return min(base_score, 1.0)
 
 
 def get_bank_template_path(bank_code: str) -> Optional[str]:
